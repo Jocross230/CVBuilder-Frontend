@@ -35,6 +35,34 @@ const getVisitorId = () => {
 
     return visitorId;
 };
+async function trackAnalyticsEvent(eventType, cvId = null) {
+    try {
+        const response = await fetch(`${API_URL}/Analytics/event`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                eventType,
+                visitorId: getVisitorId(),
+                cvId,
+            }),
+        });
+
+        const responseText = await response.text();
+
+        if (!response.ok) {
+            throw new Error(
+                `Analytics event failed: ${response.status} ${responseText}`
+            );
+        }
+
+        return true;
+    } catch (error) {
+        console.error(`Analytics tracking failed (${eventType}):`, error);
+        return false;
+    }
+}
 
 async function createCv(cvData) {
     const response = await fetch(`${API_URL}/Cv`, {
@@ -2095,42 +2123,21 @@ export default function CVBuilder() {
     useEffect(() => {
         if (!loaded) return;
 
-        const trackCvStarted = async () => {
-            try {
-                let visitorId = localStorage.getItem('cv-builder-visitor-id');
+        const alreadyTracked = sessionStorage.getItem(
+            'cv-builder-started-session'
+        );
 
-                if (!visitorId) {
-                    visitorId = crypto.randomUUID();
-                    localStorage.setItem('cv-builder-visitor-id', visitorId);
-                }
+        if (alreadyTracked) return;
 
-                const today = new Date().toISOString().split('T')[0];
-                const lastTracked = localStorage.getItem('cv-builder-started-date');
+        trackAnalyticsEvent(
+            'CV_STARTED',
+            cvId || null
+        );
 
-                if (lastTracked === today) {
-                    return;
-                }
-
-                await fetch(`${API_URL}/Analytics/event`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        eventType: 'CV_STARTED',
-                        visitorId: visitorId,
-                        cvId: cvId || null,
-                    }),
-                });
-
-                localStorage.setItem('cv-builder-started-date', today);
-
-            } catch (error) {
-                console.error('CV started tracking failed:', error);
-            }
-        };
-
-        trackCvStarted();
+        sessionStorage.setItem(
+            'cv-builder-started-session',
+            'true'
+        );
     }, [loaded]);
 
   // Debounced autosave
@@ -2211,17 +2218,10 @@ export default function CVBuilder() {
 
             setCoverLetter(result.coverLetter || '');
 
-            await fetch(`${API_URL}/Analytics/event`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    eventType: 'COVER_LETTER_GENERATED',
-                    visitorId: getVisitorId(),
-                    cvId: cvId,
-                }),
-            });
+            await trackAnalyticsEvent(
+                'COVER_LETTER_GENERATED',
+                cvId
+            );
         } catch (error) {
             console.error('COVER LETTER ERROR:', error);
 
@@ -2303,7 +2303,19 @@ export default function CVBuilder() {
         }
     };
     useEffect(() => {
+        if (!adminToken) {
+            return;
+        }
+
         loadAnalytics();
+
+        const interval = setInterval(() => {
+            loadAnalytics();
+        }, 10000);
+
+        return () => {
+            clearInterval(interval);
+        };
     }, [adminToken]);
     const handleDownloadCoverLetter = () => {
         if (!coverLetter) {
@@ -2379,28 +2391,10 @@ export default function CVBuilder() {
         pdf.save(`${fileName}-Cover-Letter.pdf`);
     };
     const handlePrint = async () => {
-        try {
-            let visitorId = localStorage.getItem('cv-builder-visitor-id');
-
-            if (!visitorId) {
-                visitorId = crypto.randomUUID();
-                localStorage.setItem('cv-builder-visitor-id', visitorId);
-            }
-
-            await fetch(`${API_URL}/Analytics/event`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    eventType: 'CV_DOWNLOADED',
-                    visitorId: visitorId,
-                    cvId: cvId || null,
-                }),
-            });
-        } catch (error) {
-            console.error('Analytics tracking failed:', error);
-        }
+        await trackAnalyticsEvent(
+            'CV_DOWNLOADED',
+            cvId
+        );
 
         window.print();
     };
