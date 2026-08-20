@@ -565,7 +565,20 @@ function ExperienceStep({ data, update, cvId }) {
     const [deletingId, setDeletingId] = useState(null);
 
     const removeExp = async (id) => {
-        if (!cvId || !id) return;
+        if (!id) return;
+
+        const isGuid =
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+
+        // Unsaved frontend-only experience
+        if (!isGuid) {
+            update({
+                experience: data.experience.filter(e => e.id !== id),
+            });
+            return;
+        }
+
+        if (!cvId) return;
 
         try {
             setDeletingId(id);
@@ -586,9 +599,7 @@ function ExperienceStep({ data, update, cvId }) {
             }
 
             update({
-                experience: data.experience.filter(
-                    e => e.id !== id
-                ),
+                experience: data.experience.filter(e => e.id !== id),
             });
 
         } catch (error) {
