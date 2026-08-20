@@ -882,7 +882,22 @@ function ProjectsStep({ data, update, cvId }) {
     const [deletingId, setDeletingId] = useState(null);
 
     const removeProj = async (id) => {
-        if (!cvId || !id) return;
+        if (!id) return;
+
+        const project = data.projects.find(p => p.id === id);
+
+        if (!project) return;
+
+        // Unsaved project: remove it only from the frontend.
+        if (!project.saved) {
+            update({
+                projects: data.projects.filter(p => p.id !== id),
+            });
+            return;
+        }
+
+        // Saved project: delete it from the backend first.
+        if (!cvId) return;
 
         try {
             setDeletingId(id);
@@ -1008,7 +1023,55 @@ function EducationStep({ data, update, cvId }) {
             }
         ]
     });
-  const removeEdu = (id) => update({ education: data.education.filter(e => e.id !== id) });
+    const [deletingId, setDeletingId] = useState(null);
+
+    const removeEdu = async (id) => {
+        if (!id) return;
+
+        const education = data.education.find(e => e.id === id);
+
+        if (!education) return;
+
+        // Unsaved education: remove locally only.
+        if (!education.saved) {
+            update({
+                education: data.education.filter(e => e.id !== id),
+            });
+            return;
+        }
+
+        // Saved education: delete from backend.
+        if (!cvId) return;
+
+        try {
+            setDeletingId(id);
+
+            const response = await fetch(
+                `${API_URL}/Cv/${cvId}/educations/${id}`,
+                {
+                    method: 'DELETE',
+                }
+            );
+
+            const responseText = await response.text();
+
+            if (!response.ok) {
+                throw new Error(
+                    `Failed to delete education: ${response.status} ${responseText}`
+                );
+            }
+
+            update({
+                education: data.education.filter(e => e.id !== id),
+            });
+
+        } catch (error) {
+            console.error('DELETE EDUCATION ERROR:', error);
+            alert(`Failed to delete education: ${error.message}`);
+        } finally {
+            setDeletingId(null);
+        }
+    };
   const changeEdu = (id, patch) => update({
     education: data.education.map(e => e.id === id ? { ...e, ...patch } : e)
   });
@@ -1062,7 +1125,7 @@ function EducationStep({ data, update, cvId }) {
                     item.id === edu.id
                         ? {
                             ...item,
-                            backendId: savedEducation.id,
+                            id: savedEducation.id,
                             saved: true,
                         }
                         : item
